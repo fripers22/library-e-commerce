@@ -1,0 +1,1364 @@
+================================================================================
+    GUÍA COMPLETA DE IMPLEMENTACIÓN DE LAS 38 ISSUES DEL PROYECTO
+                      LIBRERÍA E-COMMERCE API
+================================================================================
+
+ÍNDICE:
+1. ISSUES DE BASE DE DATOS (13 issues)
+2. ISSUES DE API (14 issues)
+3. ISSUES DE ARQUITECTURA (8 issues)
+4. ISSUES ADICIONALES (3 issues)
+
+================================================================================
+PARTE 1: ISSUES DE BASE DE DATOS (DB-001 a DB-013)
+================================================================================
+
+#1 [DB-001] - Tabla de Usuarios
+--------------------------------------------------------------------------------
+UBICACIÓN: app/database.py (líneas 25-43)
+
+IMPLEMENTACIÓN:
+- Clase: UserDB(Base)
+- Tabla: "users"
+- Campos:
+  * idusuario (PK, Integer, autoincremental)
+  * nombre, apellido (String, requeridos)
+  * correo (String, único, indexado)
+  * contraseña (String, hasheada con bcrypt)
+  * rol (String: CLIENTE, VENDEDOR, ADMIN)
+  * fecha_nacimiento (Date)
+  * direccion, telefono (String)
+  * fecha_creacion (DateTime, automático)
+  * activo (Boolean, default False hasta verificar email)
+  * preferencias (JSON, lista de géneros favoritos)
+  * acepta_terminos (Boolean)
+  * token_verificacion (String, UUID para email)
+  * email_verificado (Boolean)
+
+RELACIONES:
+- carritos → CarritoDB (1:N)
+- pedidos → PedidoDB (1:N)
+- facturas → FacturacionDB (1:N)
+
+VALIDACIONES (domain):
+- app/domain/user_model.py
+- RolEnum: CLIENTE, ADMIN, VENDEDOR
+- UserCreate: validación de email, edad mínima, términos
+
+REPOSITORIO:
+- app/repository/user_repository.py
+- Métodos: create_user, get_by_email, get_by_token, verify_email, etc.
+
+SERVICIO:
+- app/services/user_service.py
+- Validaciones de negocio: edad >= 18, email único, hash de contraseña
+
+API:
+- app/api/user_api.py
+- POST /usuarios/ (crear)
+- GET /usuarios/ (listar)
+- GET /usuarios/{id} (obtener)
+- PUT /usuarios/{id} (actualizar)
+- DELETE /usuarios/{id} (eliminar)
+- POST /usuarios/verificar/{token} (verificar email)
+
+TESTS:
+- tests/test_usuarios.py (9 tests)
+
+
+#2 [DB-002] - Tabla de Libros
+--------------------------------------------------------------------------------
+UBICACIÓN: app/database.py (líneas 46-65)
+
+IMPLEMENTACIÓN:
+- Clase: BookDB(Base)
+- Tabla: "books"
+- Campos:
+  * idlibro (PK, Integer)
+  * titulo (String, requerido)
+  * autor (JSON, lista de autores)
+  * categoria (JSON, lista de categorías)
+  * precio (String para precisión Decimal)
+  * stock (Integer, default 0)
+  * editorial (String)
+  * año_publicacion (Integer)
+  * idioma (String)
+  * formato (String: Tapa Dura, Tapa Blanda, E-book)
+  * descripcion (Text)
+  * imagen_portada (String, URL)
+  * activo (Boolean)
+  * fecha_creacion, fecha_ultima_actualizacion (DateTime)
+  * descuento (String para Decimal)
+
+RELACIONES:
+- inventarios → InventarioDB (1:1)
+
+VALIDACIONES (domain):
+- app/domain/book_model.py
+- FormatoEnum: TAPA_DURA, TAPA_BLANDA, EBOOK
+- Precio > 0, stock >= 0, año entre 1000-2100
+
+REPOSITORIO:
+- app/repository/book_repository.py
+
+SERVICIO:
+- app/services/book_service.py
+
+API:
+- app/api/book_api.py
+- POST /libros/ (crear)
+- GET /libros/ (listar catálogo)
+- GET /libros/{id} (detalle)
+- PUT /libros/{id} (actualizar)
+- DELETE /libros/{id} (eliminar)
+
+TESTS:
+- tests/test_libros.py (9 tests)
+
+
+#3 [DB-003] - Tabla de Carritos
+--------------------------------------------------------------------------------
+UBICACIÓN: app/database.py (líneas 68-85)
+
+IMPLEMENTACIÓN:
+- Clase: CarritoDB(Base)
+- Tabla: "carritos"
+- Campos:
+  * idcarrito (PK)
+  * idusuario (FK → users)
+  * items (JSON, lista de productos [{idlibro, cantidad, precio, subtotal}])
+  * fecha_creacion, fecha_actualizacion (DateTime)
+  * subtotal, descuentos, impuestos, total (String para Decimal)
+  * estado (String: ACTIVO, ABANDONADO, CONVERTIDO)
+  * sesion_id (String)
+  * ultimo_usuario_modifico (Integer)
+
+LÓGICA ESPECIAL:
+- Cálculo automático de IVA (19%)
+- Un carrito ACTIVO por usuario
+- Estado CONVERTIDO cuando se crea pedido
+
+VALIDACIONES (domain):
+- app/domain/carrito_model.py
+- EstadoCarritoEnum: ACTIVO, ABANDONADO, CONVERTIDO
+- CarritoItem con validación de cantidades
+
+REPOSITORIO:
+- app/repository/carrito_repository.py
+- add_item() - agrega productos y actualiza totales
+- remove_item() - quita productos
+- recalcular_totales() - recalcula subtotal + IVA + total
+
+SERVICIO:
+- app/services/carrito_service.py
+- Validación de stock antes de agregar
+
+API:
+- app/api/carrito_api.py
+- POST /carritos/ (crear)
+- GET /carritos/usuario/{id} (obtener carrito del usuario)
+- POST /carritos/{id}/items (agregar item)
+- DELETE /carritos/{id}/items/{idlibro} (quitar item)
+- PUT /carritos/{id}/estado (cambiar estado)
+
+TESTS:
+- tests/test_carritos.py (6 tests)
+- test_calcular_totales_con_iva - verifica IVA 19%
+
+
+#4 [DB-004] - Tabla de Pedidos
+--------------------------------------------------------------------------------
+UBICACIÓN: app/database.py (líneas 88-108)
+
+IMPLEMENTACIÓN:
+- Clase: PedidoDB(Base)
+- Tabla: "pedidos"
+- Campos:
+  * idpedido (PK)
+  * idusuario (FK → users)
+  * fecha (DateTime)
+  * estado (String: PENDIENTE, EN_TRANSITO, COMPLETADO, CANCELADO)
+  * items (JSON, copia del carrito)
+  * total (String)
+  * direccion_envio (String)
+  * metodo_pago (String: TARJETA_CREDITO, TARJETA_DEBITO, PSE, EFECTIVO)
+  * subtotal, descuentos, impuestos (String)
+  * fecha_actualizacion (DateTime)
+  * idcarrito (Integer, referencia al carrito original)
+  * numero_factura (String)
+  * notas (String)
+
+LÓGICA ESPECIAL:
+- Se crea desde un carrito
+- Reduce inventario automáticamente
+- Cambia carrito a estado CONVERTIDO
+
+VALIDACIONES (domain):
+- app/domain/pedido_model.py
+- EstadoPedidoEnum: PENDIENTE, EN_TRANSITO, COMPLETADO, CANCELADO
+- MetodoPagoEnum: TARJETA_CREDITO, TARJETA_DEBITO, PSE, EFECTIVO
+
+REPOSITORIO:
+- app/repository/pedido_repository.py
+- create_pedido() - calcula totales automáticamente
+
+SERVICIO:
+- app/services/pedido_service.py
+
+API:
+- app/api/pedido_api.py
+- POST /pedidos/ (crear desde carrito)
+- GET /pedidos/ (listar todos)
+- GET /pedidos/{id} (detalle)
+- GET /pedidos/usuario/{id} (pedidos de un usuario)
+- PUT /pedidos/{id} (actualizar estado)
+- DELETE /pedidos/{id} (cancelar)
+
+TESTS:
+- tests/test_flujo_completo.py
+- test_flujo_compra_completo - valida creación de pedido
+
+
+#5 [DB-005] - Tabla de Facturación
+--------------------------------------------------------------------------------
+UBICACIÓN: app/database.py (líneas 111-130)
+
+IMPLEMENTACIÓN:
+- Clase: FacturacionDB(Base)
+- Tabla: "facturacion"
+- Campos:
+  * idfactura (PK)
+  * idpedido (FK → pedidos, único)
+  * metodo_pago (String)
+  * fecha (DateTime)
+  * total, impuesto (String)
+  * idusuario (FK → users)
+  * subtotal, descuentos (String)
+  * items (JSON con impuesto_item calculado)
+  * estado (String: EMITIDA, PAGADA, ANULADA)
+  * fecha_actualizacion (DateTime)
+  * datos_fiscales (String: NIT, nombre completo)
+  * moneda (String, default COP)
+  * notas (String)
+
+LÓGICA ESPECIAL:
+- Una factura por pedido (relación 1:1)
+- Agrega impuesto_item a cada producto
+
+VALIDACIONES (domain):
+- app/domain/facturacion_model.py
+- EstadoFacturaEnum: EMITIDA, PAGADA, ANULADA
+- MonedaEnum: COP, USD, EUR
+
+REPOSITORIO:
+- app/repository/facturacion_repository.py
+- create_factura() - calcula impuestos por item
+
+SERVICIO:
+- app/services/facturacion_service.py
+
+API:
+- app/api/facturacion_api.py
+- POST /facturacion/ (crear para un pedido)
+- GET /facturacion/ (listar)
+- GET /facturacion/{id} (detalle)
+- GET /facturacion/pedido/{id} (obtener por pedido)
+- GET /facturacion/usuario/{id} (facturas de usuario)
+- PUT /facturacion/{id} (actualizar estado)
+- DELETE /facturacion/{id} (anular)
+
+
+#6 [DB-006] - Tabla de Inventario
+--------------------------------------------------------------------------------
+UBICACIÓN: app/database.py (líneas 133-151)
+
+IMPLEMENTACIÓN:
+- Clase: InventarioDB(Base)
+- Tabla: "inventario"
+- Campos:
+  * idinventario (PK)
+  * idlibro (FK → books, único)
+  * umbral_minimo (Integer, default 5)
+  * stock_disponible (Integer)
+  * stock_reservado (Integer)
+  * fecha_ultima_actualizacion (DateTime)
+  * ultimo_usuario_modifico (Integer)
+  * estado (String: ACTIVO, INACTIVO, AGOTADO)
+  * fecha_ultimo_reabastecimiento (DateTime)
+  * notas (String)
+  * ubicacion_almacen (String)
+  * lote_reabastecimiento (String)
+
+LÓGICA ESPECIAL:
+- Alertas cuando stock < umbral_minimo
+- Actualización automática al crear/cancelar pedidos
+
+VALIDACIONES (domain):
+- app/domain/inventario_model.py
+- EstadoInventarioEnum: ACTIVO, INACTIVO, AGOTADO
+
+REPOSITORIO:
+- app/repository/inventario_repository.py
+- get_bajo_stock() - retorna items bajo umbral
+
+SERVICIO:
+- app/services/inventario_service.py
+
+API:
+- app/api/inventario_api.py
+- POST /inventario/ (crear)
+- GET /inventario/ (listar)
+- GET /inventario/{id} (obtener por ID)
+- GET /inventario/libro/{id} (obtener por libro)
+- GET /inventario/bajo-stock (alertas)
+- PUT /inventario/{id} (actualizar)
+- DELETE /inventario/{id} (eliminar)
+
+
+#7-13 [DB-007 a DB-013] - Otros Issues de BD
+--------------------------------------------------------------------------------
+Estos issues están cubiertos por la implementación completa de las 6 tablas:
+
+#7 [DB-007] - Relaciones entre tablas
+→ Implementadas con ForeignKey y relationship() en database.py
+
+#8 [DB-008] - Índices y constraints
+→ unique=True, index=True en campos críticos (correo, idlibro en inventario)
+
+#9 [DB-009] - Campos JSON
+→ autor, categoria, items, preferencias usan Column(JSON)
+
+#10 [DB-010] - Timestamps automáticos
+→ DateTime con default=datetime.utcnow, onupdate=datetime.utcnow
+
+#11 [DB-011] - Soft deletes
+→ Campo 'activo' en usuarios y libros
+
+#12 [DB-012] - Precisión decimal
+→ Precios almacenados como String para trabajar con Decimal en Python
+
+#13 [DB-013] - Script de datos de prueba
+→ scripts/seed_data.py - crea 3 usuarios, 15 libros, inventario, carritos, pedidos, facturas
+
+
+================================================================================
+PARTE 2: ISSUES DE API (26-38 + extras)
+================================================================================
+
+AUTENTICACIÓN Y SEGURIDAD
+================================================================================
+
+#28 [API-USUARIO-03] - Login y Autenticación JWT
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/auth_api.py + app/auth.py
+
+IMPLEMENTACIÓN:
+
+1. MÓDULO DE AUTENTICACIÓN (app/auth.py):
+   - SECRET_KEY para JWT (⚠️ cambiar en producción)
+   - ALGORITHM = "HS256"
+   - ACCESS_TOKEN_EXPIRE_MINUTES = 30
+   
+   Funciones:
+   - create_access_token() - genera JWT con exp claim
+   - verify_password() - compara hash bcrypt
+   - authenticate_user() - valida correo + contraseña
+   - get_current_user() - dependency para obtener usuario del token
+   - require_role() - decorator para control de acceso por roles
+
+2. API DE LOGIN (app/api/auth_api.py):
+   - POST /auth/login
+   - Acepta: OAuth2PasswordRequestForm (username=email, password)
+   - Retorna: LoginResponse
+     {
+       "access_token": "eyJhbGci...",
+       "token_type": "bearer",
+       "idusuario": 2,
+       "nombre": "Carlos",
+       "correo": "cliente@example.com",
+       "rol": "CLIENTE"
+     }
+
+FLUJO:
+1. Usuario envía correo + contraseña
+2. Sistema busca usuario por correo
+3. Verifica contraseña con bcrypt
+4. Genera token JWT (válido 30 min)
+5. Retorna token + datos del usuario
+
+USO DEL TOKEN:
+- Header: Authorization: Bearer <token>
+- Se valida en cada request protegido
+- get_current_user() extrae usuario del token
+
+SEGURIDAD:
+- Contraseñas hasheadas con bcrypt (app/services/user_service.py)
+- Tokens firmados con SECRET_KEY
+- Expiración automática a los 30 minutos
+- OAuth2PasswordBearer para Swagger UI
+
+
+USUARIOS
+================================================================================
+
+#26 [API-USUARIO-01] - Registro de Usuarios
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/user_api.py
+
+ENDPOINT: POST /usuarios/
+REQUEST BODY:
+{
+  "nombre": "Juan",
+  "apellido": "Pérez",
+  "correo": "juan@example.com",
+  "contraseña": "mipassword123",
+  "rol": "CLIENTE",
+  "fecha_nacimiento": "1995-05-15",
+  "direccion": "Calle 123",
+  "telefono": "3001234567",
+  "preferencias": ["Ficción", "Ciencia"],
+  "acepta_terminos": true
+}
+
+RESPONSE: UserResponse (201 Created)
+
+VALIDACIONES:
+1. Email único (user_service.py)
+2. Edad >= 18 años (user_service.py, línea ~30)
+3. acepta_terminos = true (obligatorio)
+4. Contraseña hasheada con bcrypt
+5. Genera token_verificacion (UUID)
+6. activo = False (hasta verificar email)
+7. email_verificado = False
+
+FLUJO:
+1. Validar datos con Pydantic (UserCreate)
+2. Verificar email único
+3. Calcular edad y validar >= 18
+4. Hash de contraseña con bcrypt
+5. Generar token de verificación
+6. Crear usuario en BD
+7. Retornar UserResponse
+
+
+#27 [API-USUARIO-02] - Verificación de Email
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/user_api.py
+
+ENDPOINTS:
+
+1. POST /usuarios/verificar/{token}
+   - Verifica el email usando el token UUID
+   - Marca email_verificado = True
+   - Activa la cuenta (activo = True)
+   - Retorna VerifyEmailResponse
+
+2. POST /usuarios/enviar-verificacion/{user_id}
+   - (Solo desarrollo) Retorna el token de verificación
+   - En producción debería enviar email real
+   - Retorna {"token": "uuid-string"}
+
+FLUJO DE VERIFICACIÓN:
+1. Usuario se registra → recibe email con link
+2. Link contiene token: /usuarios/verificar/{token}
+3. Sistema busca usuario por token (user_repository.get_user_by_token)
+4. Si existe: marca verificado y activa cuenta
+5. Usuario puede hacer login
+
+IMPLEMENTACIÓN:
+- Repository: user_repository.py
+  * get_user_by_token(token) - busca por token_verificacion
+  * verify_email(user) - actualiza email_verificado y activo
+  
+- Service: user_service.py
+  * verify_user_email(token) - orquesta la verificación
+
+
+LIBROS
+================================================================================
+
+#29 [API-LIBRO-001] - Consultar Catálogo de Libros
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/book_api.py
+
+ENDPOINT: GET /libros/
+QUERY PARAMS: 
+- skip (int, default 0) - paginación
+- limit (int, default 100) - máximo por página
+
+RESPONSE: List[BookResponse]
+[
+  {
+    "idlibro": 1,
+    "titulo": "Cien Años de Soledad",
+    "autor": ["Gabriel García Márquez"],
+    "categoria": ["Ficción", "Realismo Mágico"],
+    "precio": "50000.00",
+    "stock": 25,
+    "editorial": "Editorial Sudamericana",
+    "año_publicacion": 1967,
+    "idioma": "Español",
+    "formato": "Tapa Dura",
+    "descripcion": "...",
+    "imagen_portada": "url",
+    "activo": true,
+    "descuento": "0"
+  }
+]
+
+LÓGICA:
+- Retorna solo libros activos (activo=True)
+- Ordenados por fecha_creacion descendente
+- Paginación con skip/limit
+
+IMPLEMENTACIÓN:
+- Repository: book_repository.get_all_books(skip, limit)
+- Service: book_service.get_all_books()
+- API: GET /libros/
+
+
+#30 [API-LIBRO-002] - Crear Libros (Admin)
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/book_api.py
+
+ENDPOINT: POST /libros/
+REQUIERE: Rol ADMIN (futuro con @require_role(["ADMIN"]))
+
+REQUEST BODY:
+{
+  "titulo": "El Quijote",
+  "autor": ["Miguel de Cervantes"],
+  "categoria": ["Clásico", "Aventura"],
+  "precio": "45000.00",
+  "stock": 30,
+  "editorial": "Cátedra",
+  "año_publicacion": 1605,
+  "idioma": "Español",
+  "formato": "Tapa Blanda",
+  "descripcion": "Obra maestra de la literatura"
+}
+
+RESPONSE: BookResponse (201 Created)
+
+VALIDACIONES:
+1. Precio > 0 (domain/book_model.py)
+2. Stock >= 0
+3. Año entre 1000-2100
+4. Formato válido (TAPA_DURA, TAPA_BLANDA, EBOOK)
+5. Autor y categoría son listas (JSON)
+
+LÓGICA ESPECIAL:
+- Crea libro en tabla books
+- Crea registro de inventario automáticamente (inventario_service)
+- Stock inicial = campo stock del libro
+
+
+CARRITOS
+================================================================================
+
+#31 [API-CARRITO-001] - Añadir Item al Carrito
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/carrito_api.py
+
+ENDPOINT: POST /carritos/{carrito_id}/items
+
+REQUEST BODY:
+{
+  "idlibro": 5,
+  "cantidad": 2
+}
+
+RESPONSE: CarritoResponse (actualizado)
+
+VALIDACIONES:
+1. Verifica que el libro existe
+2. Verifica stock disponible
+3. Si item ya existe en carrito, suma cantidad
+4. Si es nuevo, agrega al carrito
+
+LÓGICA:
+1. Obtiene precio del libro
+2. Calcula subtotal_item = precio × cantidad
+3. Agrega/actualiza item en carrito.items (JSON)
+4. Recalcula totales:
+   - subtotal = suma de subtotal_item
+   - impuestos = subtotal × 0.19 (IVA 19%)
+   - total = subtotal - descuentos + impuestos
+5. Actualiza fecha_actualizacion
+
+IMPLEMENTACIÓN:
+- Repository: carrito_repository.add_item(carrito, item)
+- Repository: carrito_repository.recalcular_totales(carrito)
+- Service: carrito_service.add_item_to_carrito()
+- API: POST /carritos/{id}/items
+
+TESTS:
+- tests/test_carritos.py::test_add_item_to_carrito
+- tests/test_carritos.py::test_calcular_totales_con_iva (verifica IVA 19%)
+
+
+#32 [API-CARRITO-002] - Checkout (Convertir a Pedido)
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/carrito_api.py
+
+ENDPOINT: POST /carritos/{carrito_id}/checkout
+
+REQUEST BODY:
+{
+  "direccion_envio": "Calle 123, Bogotá",
+  "metodo_pago": "TARJETA_CREDITO"
+}
+
+RESPONSE: PedidoResponse (pedido creado)
+
+LÓGICA:
+1. Valida que el carrito tenga items
+2. Valida stock de todos los productos
+3. Crea pedido con datos del carrito
+4. Reduce inventario de cada producto
+5. Cambia estado del carrito a CONVERTIDO
+6. Retorna el pedido creado
+
+FLUJO COMPLETO:
+1. Usuario agrega productos al carrito (#31)
+2. Usuario hace checkout
+3. Sistema crea pedido (estado PENDIENTE)
+4. Copia items del carrito al pedido
+5. Reduce stock en inventario
+6. Marca carrito como CONVERTIDO
+7. Usuario puede consultar su pedido
+
+IMPLEMENTACIÓN:
+- Service: carrito_service.checkout()
+- Llama a: pedido_service.create_pedido()
+- Llama a: inventario_service.reduce_stock()
+- API: POST /carritos/{id}/checkout
+
+TESTS:
+- tests/test_flujo_completo.py::test_flujo_compra_completo
+
+
+FACTURACIÓN
+================================================================================
+
+#33 [API-FACTURA-001] - Consultar Factura
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/facturacion_api.py
+
+ENDPOINTS:
+
+1. GET /facturacion/{factura_id}
+   - Obtiene factura por ID
+   - Retorna FacturacionResponse
+
+2. GET /facturacion/pedido/{pedido_id}
+   - Obtiene factura de un pedido específico
+   - Relación 1:1 (un pedido → una factura)
+
+3. GET /facturacion/usuario/{usuario_id}
+   - Lista todas las facturas de un usuario
+   - Retorna List[FacturacionResponse]
+
+RESPONSE EXAMPLE:
+{
+  "idfactura": 1,
+  "idpedido": 1,
+  "metodo_pago": "TARJETA_CREDITO",
+  "fecha": "2025-11-14T10:00:00",
+  "total": "45220.0000",
+  "impuesto": "7220.0000",
+  "idusuario": 2,
+  "subtotal": "38000.0000",
+  "descuentos": "0",
+  "items": [
+    {
+      "idlibro": 3,
+      "titulo": "1984",
+      "cantidad": 1,
+      "precio_unitario": "38000.00",
+      "subtotal_item": "38000.00",
+      "impuesto_item": "7220.00"
+    }
+  ],
+  "estado": "PAGADA",
+  "datos_fiscales": "NIT: 123456789 - Carlos Cliente",
+  "moneda": "COP",
+  "notas": "Factura pagada"
+}
+
+IMPLEMENTACIÓN:
+- Repository: facturacion_repository.py
+  * get_factura_by_id()
+  * get_factura_by_pedido()
+  * get_facturas_by_user()
+
+
+#34 [API-FACTURA-002] - Anular Factura (Admin)
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/facturacion_api.py
+
+ENDPOINT: DELETE /facturacion/{factura_id}
+REQUIERE: Rol ADMIN (futuro)
+
+LÓGICA:
+- NO elimina la factura de la BD
+- Cambia estado a "ANULADA"
+- Mantiene registro para auditoría
+
+IMPLEMENTACIÓN:
+- API: DELETE /facturacion/{id}
+- Actualiza: factura.estado = "ANULADA"
+- Retorna: {"message": "Factura anulada exitosamente"}
+
+
+INVENTARIO
+================================================================================
+
+#35 [API-INVENTARIO-001] - Actualizar Stock (Admin)
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/inventario_api.py
+
+ENDPOINT: PUT /inventario/{inventario_id}
+
+REQUEST BODY:
+{
+  "stock_disponible": 100,
+  "umbral_minimo": 10,
+  "estado": "ACTIVO",
+  "notas": "Reabastecimiento mensual"
+}
+
+RESPONSE: InventarioResponse (actualizado)
+
+LÓGICA:
+- Actualiza stock disponible
+- Actualiza umbral mínimo (para alertas)
+- Actualiza estado (ACTIVO, INACTIVO, AGOTADO)
+- Marca fecha_ultima_actualizacion
+- Registra ultimo_usuario_modifico
+
+IMPLEMENTACIÓN:
+- Repository: inventario_repository.update_inventario()
+- Service: inventario_service.update_inventario()
+- API: PUT /inventario/{id}
+
+
+#36 [API-INVENTARIO-002] - Consultar Bajo Stock (Admin)
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/inventario_api.py
+
+ENDPOINT: GET /inventario/bajo-stock
+
+RESPONSE: List[InventarioResponse]
+- Retorna items donde stock_disponible < umbral_minimo
+
+EXAMPLE:
+[
+  {
+    "idinventario": 8,
+    "idlibro": 8,
+    "stock_disponible": 3,
+    "umbral_minimo": 5,
+    "estado": "ACTIVO",
+    "libro": {
+      "titulo": "Breve Historia del Tiempo"
+    }
+  }
+]
+
+USO:
+- Sistema de alertas
+- Dashboard administrativo
+- Reabastecimiento automático
+
+IMPLEMENTACIÓN:
+- Repository: inventario_repository.get_bajo_stock()
+- Filtra: stock_disponible < umbral_minimo
+- API: GET /inventario/bajo-stock
+
+
+PEDIDOS
+================================================================================
+
+#37 [API-PEDIDO-001] - Crear Pedido
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/pedido_api.py
+
+ENDPOINT: POST /pedidos/
+
+REQUEST BODY:
+{
+  "idcarrito": 1,
+  "direccion_envio": "Calle 123, Bogotá",
+  "metodo_pago": "TARJETA_CREDITO",
+  "notas": "Entregar en horario laboral"
+}
+
+RESPONSE: PedidoResponse (201 Created)
+
+LÓGICA:
+1. Obtiene carrito por ID
+2. Valida que tenga items
+3. Valida stock de todos los productos
+4. Crea pedido:
+   - Copia items del carrito
+   - Calcula totales (subtotal, IVA 19%, total)
+   - Estado inicial: PENDIENTE
+5. Reduce inventario de cada producto
+6. Marca carrito como CONVERTIDO
+7. Retorna pedido creado
+
+VALIDACIONES:
+- Carrito debe existir
+- Carrito debe estar ACTIVO
+- Debe tener items
+- Stock suficiente para cada item
+
+IMPLEMENTACIÓN:
+- Repository: pedido_repository.create_pedido()
+- Service: pedido_service.create_pedido()
+- Reduce stock: inventario_service.reduce_stock()
+- API: POST /pedidos/
+
+TESTS:
+- tests/test_flujo_completo.py (3 tests)
+
+
+#38 [API-PEDIDO-002] - Cancelar Pedido
+--------------------------------------------------------------------------------
+UBICACIÓN: app/api/pedido_api.py
+
+ENDPOINT: PUT /pedidos/{pedido_id}
+
+REQUEST BODY:
+{
+  "estado": "CANCELADO"
+}
+
+RESPONSE: PedidoResponse (actualizado)
+
+LÓGICA:
+- Cambia estado del pedido a CANCELADO
+- Opcionalmente restaura inventario (si era PENDIENTE)
+- Actualiza fecha_actualizacion
+
+ESTADOS VÁLIDOS:
+- PENDIENTE → EN_TRANSITO
+- PENDIENTE → CANCELADO
+- EN_TRANSITO → COMPLETADO
+- EN_TRANSITO → CANCELADO
+
+IMPLEMENTACIÓN:
+- Repository: pedido_repository.update_pedido()
+- Service: pedido_service.update_pedido_status()
+- API: PUT /pedidos/{id}
+
+
+================================================================================
+PARTE 3: ISSUES DE ARQUITECTURA (14-25)
+================================================================================
+
+#14 [ARQ-001] - Arquitectura en Capas (Clean Architecture)
+--------------------------------------------------------------------------------
+UBICACIÓN: Todo el proyecto
+
+IMPLEMENTACIÓN:
+
+1. API LAYER (app/api/):
+   - 7 routers (auth, users, books, carritos, pedidos, facturacion, inventario)
+   - Maneja requests/responses HTTP
+   - Validación de entrada con Pydantic
+   - Retorna códigos HTTP apropiados
+
+2. SERVICE LAYER (app/services/):
+   - 6 servicios (uno por entidad)
+   - Lógica de negocio:
+     * Validación de edad >= 18
+     * Validación de stock
+     * Cálculo de totales e IVA
+     * Hash de contraseñas
+   - Orquestación entre repositorios
+
+3. REPOSITORY LAYER (app/repository/):
+   - 6 repositorios (uno por entidad)
+   - Acceso a datos con SQLAlchemy
+   - Métodos CRUD
+   - Queries específicas
+
+4. DOMAIN LAYER (app/domain/):
+   - 6 archivos de modelos
+   - Modelos Pydantic (DTOs):
+     * Create (para POST)
+     * Update (para PUT)
+     * Response (para GET)
+   - Enums (RolEnum, EstadoEnum, etc.)
+   - Validaciones de formato
+
+5. DATABASE LAYER (app/database.py):
+   - Modelos SQLAlchemy (ORM)
+   - Configuración de BD
+   - Relaciones entre tablas
+
+FLUJO TÍPICO:
+API → Service → Repository → Database
+↓
+Response
+
+
+#15 [ARQ-002] - Separación de Responsabilidades
+--------------------------------------------------------------------------------
+Cada capa tiene una responsabilidad clara:
+
+- API: HTTP, rutas, autenticación
+- Service: Lógica de negocio
+- Repository: Acceso a datos
+- Domain: Validaciones de formato
+- Database: Persistencia
+
+EJEMPLO (Crear Usuario):
+1. API (user_api.py): Recibe POST /usuarios/
+2. Service (user_service.py): Valida edad, hashea contraseña
+3. Repository (user_repository.py): INSERT en BD
+4. Database (database.py): SQLAlchemy ejecuta SQL
+
+
+#16 [ARQ-003] - Inyección de Dependencias
+--------------------------------------------------------------------------------
+UBICACIÓN: FastAPI Depends()
+
+EJEMPLOS:
+
+1. Database Session:
+   @app.post("/usuarios/")
+   def create_user(user: UserCreate, db: Session = Depends(get_db)):
+       ...
+
+2. Usuario Actual:
+   @app.get("/perfil")
+   def get_profile(current_user: UserDB = Depends(get_current_user)):
+       ...
+
+3. Control de Roles (futuro):
+   @app.delete("/libros/{id}")
+   @require_role(["ADMIN"])
+   def delete_book(id: int, ...):
+       ...
+
+
+#17 [ARQ-004] - Validación con Pydantic
+--------------------------------------------------------------------------------
+UBICACIÓN: app/domain/*.py
+
+EJEMPLOS:
+
+1. Email válido:
+   correo: EmailStr
+
+2. Edad mínima (custom validator):
+   @field_validator('fecha_nacimiento')
+   def validate_age(cls, v):
+       edad = (datetime.now().date() - v).days // 365
+       if edad < 18:
+           raise ValueError('Debe ser mayor de 18 años')
+       return v
+
+3. Precio positivo:
+   @field_validator('precio')
+   def validate_precio(cls, v):
+       if Decimal(v) <= 0:
+           raise ValueError('El precio debe ser mayor a 0')
+       return v
+
+
+#18 [ARQ-005] - Manejo de Errores
+--------------------------------------------------------------------------------
+UBICACIÓN: En cada capa
+
+EJEMPLOS:
+
+1. API Layer:
+   if not user:
+       raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+2. Service Layer:
+   if edad < 18:
+       raise ValueError("Debe ser mayor de 18 años")
+
+3. Repository Layer:
+   try:
+       db.commit()
+   except IntegrityError:
+       db.rollback()
+       raise ValueError("Email ya existe")
+
+
+#19 [ARQ-006] - Configuración Centralizada
+--------------------------------------------------------------------------------
+UBICACIÓN: 
+
+1. Database (app/database.py):
+   DATABASE_URL = "sqlite:///./library.db"
+
+2. Auth (app/auth.py):
+   SECRET_KEY = "..."
+   ALGORITHM = "HS256"
+   ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+3. Routers (app/config/routers.py):
+   ROUTERS = [auth_api.router, user_api.router, ...]
+
+
+#20 [ARQ-007] - Routers Modulares
+--------------------------------------------------------------------------------
+UBICACIÓN: app/config/routers.py + app/main.py
+
+IMPLEMENTACIÓN:
+1. Cada API tiene su router (APIRouter)
+2. Todos se registran en ROUTERS list
+3. main.py los incluye en la app
+
+BENEFICIOS:
+- Fácil agregar/quitar módulos
+- Código organizado por dominio
+- Prefijos automáticos (/usuarios, /libros, etc.)
+
+
+#21 [ARQ-008] - Testing Completo
+--------------------------------------------------------------------------------
+UBICACIÓN: tests/ (4 archivos, 27 tests)
+
+ESTRATEGIA:
+
+1. Tests Unitarios:
+   - test_usuarios.py (9 tests)
+   - test_libros.py (9 tests)
+   - test_carritos.py (6 tests)
+
+2. Tests de Integración:
+   - test_flujo_completo.py (3 tests)
+
+3. Fixtures:
+   - @pytest.fixture - DB temporal por test
+   - @pytest.fixture - Datos de prueba
+
+4. Cobertura:
+   - CRUD completo
+   - Validaciones de negocio
+   - Flujos end-to-end
+
+EJECUTAR:
+pytest tests/ -v
+
+
+#22-25 [ARQ-009 a ARQ-012] - Otros Issues de Arquitectura
+--------------------------------------------------------------------------------
+
+#22 [ARQ-009] - Documentación Automática
+→ Swagger UI: http://localhost:8000/docs
+→ ReDoc: http://localhost:8000/redoc
+
+#23 [ARQ-010] - Versionado de API
+→ Prefijos por módulo (/usuarios, /libros, etc.)
+→ Preparado para /v1/ si se necesita
+
+#24 [ARQ-011] - Logging y Auditoría
+→ ultimo_usuario_modifico en tablas clave
+→ fecha_actualizacion automática
+→ Historial en JSON fields (items en pedidos)
+
+#25 [ARQ-012] - Seguridad
+→ JWT con expiración
+→ Bcrypt para passwords
+→ Roles (ADMIN, VENDEDOR, CLIENTE)
+→ Email verification
+→ CORS configurado
+
+
+================================================================================
+PARTE 4: ISSUES ADICIONALES
+================================================================================
+
+#39 [EXTRA-001] - Script de Datos de Prueba
+--------------------------------------------------------------------------------
+UBICACIÓN: scripts/seed_data.py
+
+DATOS CREADOS:
+1. 3 Usuarios:
+   - admin@libreria.com / admin123 (ADMIN)
+   - cliente@example.com / cliente123 (CLIENTE)
+   - vendedor@libreria.com / vendedor123 (VENDEDOR)
+
+2. 15 Libros:
+   - Variedad de géneros (Ficción, Ciencia, Historia, etc.)
+   - Precios: $25,000 - $62,000
+   - Stock: 22 - 100 unidades
+
+3. 15 Registros de Inventario:
+   - Uno por libro
+   - Umbral mínimo: 5-10
+   - Estado: ACTIVO
+
+4. 2 Carritos:
+   - Carrito ACTIVO (2 items, $184,450)
+   - Carrito CONVERTIDO (1 item, $45,220)
+
+5. 3 Pedidos:
+   - COMPLETADO ($45,220)
+   - EN_TRANSITO ($123,760)
+   - PENDIENTE ($107,100)
+
+6. 2 Facturas:
+   - Para pedidos COMPLETADO y EN_TRANSITO
+   - Estado: PAGADA
+   - Con datos fiscales
+
+EJECUTAR:
+python scripts/seed_data.py
+
+
+#40 [EXTRA-002] - README Completo
+--------------------------------------------------------------------------------
+UBICACIÓN: README.md
+
+CONTENIDO:
+- Descripción del sistema
+- Arquitectura (5 capas)
+- Instrucciones de instalación
+- Guía de autenticación JWT
+- Lista de endpoints (7 módulos)
+- Validaciones de negocio
+- Flujo de compra completo
+- Credenciales de prueba
+- Testing (27 tests)
+- Notas de producción
+
+
+#41 [EXTRA-003] - .gitignore
+--------------------------------------------------------------------------------
+UBICACIÓN: .gitignore
+
+ARCHIVOS IGNORADOS:
+- __pycache__/
+- *.pyc
+- .venv/
+- *.db (bases de datos)
+- .env (variables de entorno)
+- .pytest_cache/
+
+
+================================================================================
+RESUMEN DE ARCHIVOS POR ISSUE
+================================================================================
+
+ARCHIVOS CRÍTICOS:
+
+1. app/database.py
+   → Issues: #1-6 (todas las tablas)
+   → 154 líneas
+   → 6 modelos SQLAlchemy
+
+2. app/auth.py
+   → Issue: #28 (JWT)
+   → 91 líneas
+   → Autenticación y autorización
+
+3. app/api/user_api.py
+   → Issues: #26, #27 (registro + verificación)
+   → ~150 líneas
+   → CRUD + verificación email
+
+4. app/api/auth_api.py
+   → Issue: #28 (login)
+   → 56 líneas
+   → Endpoint de login
+
+5. app/api/book_api.py
+   → Issues: #29, #30 (catálogo + crear)
+   → ~120 líneas
+   → CRUD de libros
+
+6. app/api/carrito_api.py
+   → Issues: #31, #32 (añadir + checkout)
+   → ~180 líneas
+   → Gestión de carritos
+
+7. app/api/pedido_api.py
+   → Issues: #37, #38 (crear + cancelar)
+   → ~140 líneas
+   → Gestión de pedidos
+
+8. app/api/facturacion_api.py
+   → Issues: #33, #34 (consultar + anular)
+   → ~130 líneas
+   → Gestión de facturas
+
+9. app/api/inventario_api.py
+   → Issues: #35, #36 (actualizar + bajo stock)
+   → ~120 líneas
+   → Control de inventario
+
+10. scripts/seed_data.py
+    → Issue: #13 (datos de prueba)
+    → 497 líneas
+    → Carga de datos iniciales
+
+11. tests/
+    → Issue: #21 (testing)
+    → 4 archivos, 27 tests
+    → Cobertura completa
+
+
+================================================================================
+FLUJOS COMPLETOS DE NEGOCIO
+================================================================================
+
+FLUJO 1: REGISTRO Y LOGIN
+--------------------------------------------------------------------------------
+1. POST /usuarios/ (#26)
+   → Crea usuario (activo=False, email_verificado=False)
+   
+2. POST /usuarios/verificar/{token} (#27)
+   → Verifica email y activa cuenta
+   
+3. POST /auth/login (#28)
+   → Obtiene token JWT (válido 30 min)
+   
+4. Requests con token:
+   Authorization: Bearer <token>
+
+
+FLUJO 2: COMPRA COMPLETA
+--------------------------------------------------------------------------------
+1. GET /libros/ (#29)
+   → Usuario ve catálogo
+   
+2. POST /carritos/ (crear carrito vacío)
+   → Sistema crea carrito ACTIVO
+   
+3. POST /carritos/{id}/items (#31)
+   → Usuario agrega productos (valida stock, calcula IVA)
+   
+4. POST /carritos/{id}/checkout (#32)
+   → Convierte carrito en pedido
+   → Reduce inventario
+   → Marca carrito como CONVERTIDO
+   
+5. POST /facturacion/ (#33)
+   → Genera factura del pedido
+   → Estado: EMITIDA
+   
+6. GET /pedidos/usuario/{id} (#37)
+   → Usuario consulta sus pedidos
+
+
+FLUJO 3: ADMINISTRACIÓN
+--------------------------------------------------------------------------------
+1. POST /libros/ (#30)
+   → Admin crea libro
+   → Sistema crea inventario automáticamente
+   
+2. GET /inventario/bajo-stock (#36)
+   → Admin ve alertas de stock bajo
+   
+3. PUT /inventario/{id} (#35)
+   → Admin reabastecer stock
+   
+4. PUT /pedidos/{id} (#38)
+   → Admin cambia estado de pedido
+   → PENDIENTE → EN_TRANSITO → COMPLETADO
+   
+5. DELETE /facturacion/{id} (#34)
+   → Admin anula factura (marca ANULADA)
+
+
+================================================================================
+COMANDOS ÚTILES
+================================================================================
+
+INICIAR SERVIDOR:
+uvicorn app.main:app --reload
+
+INICIAR EN PUERTO 5000:
+uvicorn app.main:app --port 5000 --reload
+
+CARGAR DATOS DE PRUEBA:
+python scripts/seed_data.py
+
+EJECUTAR TESTS:
+pytest tests/ -v
+
+EJECUTAR UN TEST ESPECÍFICO:
+pytest tests/test_usuarios.py::test_create_usuario_exitoso -v
+
+VER COBERTURA:
+pytest tests/ --cov=app
+
+SWAGGER UI:
+http://127.0.0.1:8000/docs
+
+REDOC:
+http://127.0.0.1:8000/redoc
+
+
+================================================================================
+CREDENCIALES DE PRUEBA
+================================================================================
+
+Admin:
+- Email: admin@libreria.com
+- Password: admin123
+- Rol: ADMIN
+
+Cliente:
+- Email: cliente@example.com
+- Password: cliente123
+- Rol: CLIENTE
+
+Vendedor:
+- Email: vendedor@libreria.com
+- Password: vendedor123
+- Rol: VENDEDOR
+
+
+================================================================================
+NOTAS IMPORTANTES
+================================================================================
+
+1. SEGURIDAD:
+   - Cambiar SECRET_KEY en producción (app/auth.py)
+   - Usar HTTPS en producción
+   - Implementar rate limiting
+   - Aplicar @require_role() en endpoints administrativos
+
+2. BASE DE DATOS:
+   - SQLite es solo para desarrollo
+   - Migrar a PostgreSQL/MySQL en producción
+   - Implementar migraciones con Alembic
+
+3. EMAIL:
+   - Implementar servicio real de email (SendGrid, AWS SES)
+   - Reemplazar /enviar-verificacion por email real
+
+4. TESTS:
+   - 27/27 tests passing (100%)
+   - Sin warnings
+   - Ejecutar antes de cada deploy
+
+5. ARQUITECTURA:
+   - Clean Architecture completa
+   - Fácil de mantener y extender
+   - Separación de responsabilidades clara
+
+
+================================================================================
+FIN DE LA GUÍA
+================================================================================
+
+Este documento mapea las 38+ issues del proyecto a su implementación exacta
+en el código. Úsalo como referencia para entender la estructura completa del
+sistema de e-commerce para librería.
+
+Autor: GitHub Copilot
+Fecha: Noviembre 14, 2025
+Proyecto: Librería E-Commerce API
+Stack: FastAPI + SQLAlchemy + Pydantic + JWT + bcrypt

@@ -1,314 +1,309 @@
-# Library API - Sistema de E-Commerce para Librería
+# library-e-commerce
+arquitectura de web service para un e-commerce de una libreria
+////////////////////////////////////////////
+# Comandos GIT
 
-API REST desarrollada con FastAPI siguiendo arquitectura en capas (Clean Architecture) para gestionar un sistema completo de e-commerce de librería incluyendo usuarios, libros, carritos de compra, pedidos, facturación e inventario.
+### Conceptos Clave
 
-## 🏗️ Arquitectura
+- **Repositorio**: Directorio que contiene el proyecto y su historial de versiones
+- **Commit**: Instantánea de los cambios realizados en el proyecto
+- **Branch**: Línea independiente de desarrollo
+- **Merge**: Proceso de combinar cambios de diferentes ramas
+- **Remote**: Versión del repositorio alojada en un servidor remoto
 
-- **API Layer** (`app/api/`): Endpoints REST y routers
-- **Service Layer** (`app/services/`): Lógica de negocio y validaciones
-- **Repository Layer** (`app/repository/`): Acceso a datos con SQLAlchemy
-- **Domain Layer** (`app/domain/`): Modelos Pydantic (DTOs) y validaciones
-- **Database** (`app/database.py`): Modelos SQLAlchemy ORM
 
-## 📋 Requisitos
+## Comandos Básicos de Git
 
-- Python 3.11+
-- SQLite (incluido en Python)
+### Inicialización y Clonado
 
-## 🚀 Instalación
-
-1. Crear y activar entorno virtual:
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate
-```
-
-2. Instalar dependencias:
-```powershell
-pip install -r requirements.txt
-```
-
-3. (Opcional) Cargar datos de prueba:
-```powershell
-python scripts/seed_data.py
-```
-
-4. Ejecutar la aplicación:
-```powershell
-uvicorn app.main:app --reload
-```
-
-La API estará disponible en `http://127.0.0.1:8000`
-
-## 📖 Documentación
-
-- **Swagger UI**: `http://127.0.0.1:8000/docs` (interactiva)
-- **ReDoc**: `http://127.0.0.1:8000/redoc`
-
-## 🔐 Autenticación
-
-La API utiliza **JWT (JSON Web Tokens)** para autenticación:
-
-### Login
 ```bash
-POST /auth/login
-Content-Type: application/x-www-form-urlencoded
+# Inicializar un nuevo repositorio
+git init
 
-username=cliente@example.com&password=cliente123
+# Clonar un repositorio existente
+git clone https://github.com/usuario/repositorio.git
+
+# Clonar con un nombre específico
+git clone https://github.com/usuario/repositorio.git mi-proyecto
 ```
 
-**Respuesta:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
-  "idusuario": 2,
-  "nombre": "Carlos",
-  "correo": "cliente@example.com",
-  "rol": "CLIENTE"
-}
-```
+### Seguimiento de Cambios
 
-Usar el token en requests:
 ```bash
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+# Ver estado del repositorio
+git status
+
+# Agregar archivos al staging area
+git add archivo.txt
+git add .                    # Agregar todos los archivos
+git add *.js                 # Agregar archivos por patrón
+
+# Confirmar cambios
+git commit -m "Mensaje descriptivo del commit"
+git commit -am "Agregar y confirmar archivos modificados"
+
+# Ver historial de commits
+git log
+git log --oneline           # Formato compacto
+git log --graph             # Mostrar gráfico de ramas
 ```
 
-### Roles
-- **ADMIN**: Acceso completo al sistema
-- **VENDEDOR**: Gestión de inventario y pedidos
-- **CLIENTE**: Compras y consulta de productos
+### Información y Diferencias
 
-## 🔌 Endpoints Principales
+```bash
+# Ver diferencias no confirmadas
+git diff
 
-### 🔑 Autenticación (`/auth`)
-- `POST /auth/login` - Autenticarse y obtener token JWT
+# Ver diferencias en staging area
+git diff --cached
 
-### 👥 Usuarios (`/usuarios`)
-- `POST /usuarios/` - Crear usuario (registro)
-- `POST /usuarios/verificar/{token}` - Verificar email
-- `POST /usuarios/enviar-verificacion/{id}` - Reenviar token de verificación
-- `GET /usuarios/` - Listar usuarios
-- `GET /usuarios/{id}` - Obtener usuario
-- `PUT /usuarios/{id}` - Actualizar usuario
-- `DELETE /usuarios/{id}` - Eliminar usuario
+# Ver diferencias entre commits
+git diff commit1 commit2
 
-### 📚 Libros (`/libros`)
-- `POST /libros/` - Crear libro
-- `GET /libros/` - Listar libros
-- `GET /libros/{id}` - Obtener libro
-- `PUT /libros/{id}` - Actualizar libro
-- `DELETE /libros/{id}` - Eliminar libro
-
-### 🛒 Carritos (`/carritos`)
-- `POST /carritos/` - Crear carrito
-- `GET /carritos/usuario/{id}` - Obtener carrito del usuario
-- `POST /carritos/{id}/items` - Agregar item al carrito
-- `DELETE /carritos/{id}/items/{idlibro}` - Quitar item del carrito
-- `PUT /carritos/{id}/estado` - Actualizar estado del carrito
-- `DELETE /carritos/{id}` - Eliminar carrito
-
-### 📦 Pedidos (`/pedidos`)
-- `POST /pedidos/` - Crear pedido desde carrito
-- `GET /pedidos/` - Listar pedidos
-- `GET /pedidos/{id}` - Obtener pedido
-- `GET /pedidos/usuario/{id}` - Pedidos de un usuario
-- `PUT /pedidos/{id}` - Actualizar estado del pedido
-- `DELETE /pedidos/{id}` - Cancelar pedido
-
-### 🧾 Facturación (`/facturacion`)
-- `POST /facturacion/` - Crear factura para un pedido
-- `GET /facturacion/` - Listar facturas
-- `GET /facturacion/{id}` - Obtener factura
-- `GET /facturacion/pedido/{id}` - Obtener factura de un pedido
-- `GET /facturacion/usuario/{id}` - Facturas de un usuario
-- `PUT /facturacion/{id}` - Actualizar factura
-- `DELETE /facturacion/{id}` - Eliminar factura
-
-### 📊 Inventario (`/inventario`)
-- `POST /inventario/` - Crear registro de inventario
-- `GET /inventario/` - Listar inventario
-- `GET /inventario/{id}` - Obtener inventario por ID
-- `GET /inventario/libro/{id}` - Inventario de un libro
-- `PUT /inventario/{id}` - Actualizar inventario
-- `DELETE /inventario/{id}` - Eliminar registro
-
-## ✅ Validaciones de Negocio
-
-### Usuarios
-- Email único y formato válido
-- Edad mínima: 18 años
-- Contraseña encriptada con bcrypt
-- Email debe ser verificado para activar cuenta
-- Roles: CLIENTE, VENDEDOR, ADMIN
-
-### Libros
-- Título y autor requeridos
-- Precio positivo
-- Stock no negativo
-- Año válido (1000-2100)
-- Categorías y autores como listas
-- Formatos: Tapa Dura, Tapa Blanda, E-book
-
-### Carritos
-- Un carrito activo por usuario
-- Verificación de stock antes de agregar items
-- Cálculo automático de subtotales, IVA (19%) y totales
-- Estados: ACTIVO, ABANDONADO, CONVERTIDO
-
-### Pedidos
-- Creación desde carrito existente
-- Validación de stock al crear pedido
-- Reducción automática de inventario
-- Estados: PENDIENTE, EN_TRANSITO, COMPLETADO, CANCELADO
-- Métodos de pago: TARJETA_CREDITO, TARJETA_DEBITO, PSE, EFECTIVO
-
-### Facturación
-- Vinculada a un pedido único
-- Incluye datos fiscales del cliente
-- Cálculo automático de impuestos
-- Estados: EMITIDA, PAGADA, ANULADA
-- Soporte de múltiples monedas (default: COP)
-
-### Inventario
-- Vinculado a un libro
-- Seguimiento de stock disponible y reservado
-- Alertas de stock bajo (umbral configurable)
-- Actualizaciones automáticas al crear/cancelar pedidos
-
-## 🗃️ Base de Datos
-
-SQLite (`library.db`) con 6 tablas:
-
-- **users**: Usuarios del sistema (clientes, vendedores, admins)
-- **books**: Catálogo de libros
-- **carritos**: Carritos de compra
-- **pedidos**: Órdenes de compra
-- **facturacion**: Facturas generadas
-- **inventario**: Control de stock
-
-## 🧪 Datos de Prueba
-
-Ejecutar `python scripts/seed_data.py` para cargar:
-
-**Usuarios:**
-- Admin: `admin@libreria.com` / `admin123`
-- Cliente: `cliente@example.com` / `cliente123`
-- Vendedor: `vendedor@libreria.com` / `vendedor123`
-
-**Datos cargados:**
-- 3 usuarios (todos verificados y activos)
-- 15 libros de diversos géneros
-- 15 registros de inventario
-- 2 carritos de ejemplo
-- 3 pedidos (COMPLETADO, EN_TRANSITO, PENDIENTE)
-- 2 facturas (para pedidos completados/en tránsito)
-
-## 🔄 Flujo de Compra Completo
-
-1. **Registro/Login**
-   - Cliente se registra: `POST /usuarios/`
-   - Verifica email: `POST /usuarios/verificar/{token}`
-   - Login: `POST /auth/login` → Obtiene JWT
-
-2. **Agregar Productos al Carrito**
-   - Crear carrito: `POST /carritos/` (automático si no existe)
-   - Agregar items: `POST /carritos/{id}/items`
-   - Ver carrito: `GET /carritos/usuario/{id}`
-
-3. **Realizar Pedido**
-   - Crear pedido: `POST /pedidos/` (desde carrito)
-   - Carrito cambia a estado "CONVERTIDO"
-   - Inventario se reduce automáticamente
-
-4. **Facturación**
-   - Generar factura: `POST /facturacion/` (para el pedido)
-   - Consultar factura: `GET /facturacion/pedido/{id}`
-
-5. **Seguimiento**
-   - Ver pedidos: `GET /pedidos/usuario/{id}`
-   - Actualizar estado: `PUT /pedidos/{id}` (vendedor/admin)
-
-## 📦 Estructura del Proyecto
-
-```
-libreria-api/
-├── app/
-│   ├── api/                    # Endpoints REST
-│   │   ├── auth_api.py        # Autenticación JWT
-│   │   ├── user_api.py        # Gestión de usuarios
-│   │   ├── book_api.py        # Gestión de libros
-│   │   ├── carrito_api.py     # Carritos de compra
-│   │   ├── pedido_api.py      # Pedidos
-│   │   ├── facturacion_api.py # Facturación
-│   │   └── inventario_api.py  # Inventario
-│   ├── config/
-│   │   └── routers.py         # Registro de routers
-│   ├── domain/                # Modelos Pydantic
-│   ├── repository/            # Acceso a datos
-│   ├── services/              # Lógica de negocio
-│   ├── auth.py                # JWT y autenticación
-│   ├── database.py            # Modelos SQLAlchemy
-│   └── main.py                # App FastAPI
-├── scripts/
-│   └── seed_data.py           # Script de datos de prueba
-├── tests/                     # 27 tests automatizados
-│   ├── test_usuarios.py
-│   ├── test_libros.py
-│   ├── test_carritos.py
-│   └── test_flujo_completo.py
-├── requirements.txt           # Dependencias
-└── README.md                  # Este archivo
+# Mostrar información de un commit específico
+git show commit-hash
 ```
 
-## 🛠️ Tecnologías
+### Deshacer Cambios
 
-- **FastAPI** 0.121.2 - Framework web moderno y rápido
-- **SQLAlchemy** 2.0.22 - ORM para Python
-- **Pydantic** 2.12.4[email] - Validación de datos
-- **python-jose[cryptography]** 3.3.0 - JWT
-- **passlib[bcrypt]** 1.7.4 - Hash de contraseñas
-- **python-multipart** 0.0.20 - OAuth2
-- **Uvicorn** 0.38.0 - Servidor ASGI
-- **pytest** 9.0.1 - Testing
-- **SQLite** - Base de datos
+```bash
+# Deshacer cambios en working directory
+git checkout -- archivo.txt
 
-## 🧪 Testing
+# Quitar archivo del staging area
+git reset HEAD archivo.txt
 
-Ejecutar tests:
-```powershell
-.\.venv\Scripts\python.exe -m pytest tests/ -v
+# Deshacer último commit (mantener cambios)
+git reset --soft HEAD~1
+
+# Deshacer último commit (eliminar cambios)
+git reset --hard HEAD~1
 ```
 
-Cobertura:
-- 27 tests automatizados
-- Pruebas unitarias y de integración
-- Validación de flujos completos de compra
+> **⚠️ Advertencia**: `git reset --hard` elimina permanentemente los cambios no confirmados.
 
-## 🚀 Funcionalidades Implementadas
+---
 
-✅ Sistema de usuarios con roles (CLIENTE, VENDEDOR, ADMIN)  
-✅ Autenticación JWT con tokens de 30 minutos  
-✅ Verificación de email con tokens UUID  
-✅ Hash de contraseñas con bcrypt  
-✅ Catálogo de libros con múltiples atributos  
-✅ Carritos de compra con cálculo automático de IVA  
-✅ Sistema de pedidos con estados  
-✅ Facturación electrónica  
-✅ Control de inventario con alertas  
-✅ Validaciones de negocio completas  
-✅ Tests automatizados (27 tests passing)  
-✅ Script de datos de prueba  
-✅ Documentación interactiva (Swagger UI)  
+## Trabajo con Ramas
 
-## ⚠️ Notas de Producción
+### Gestión de Ramas
 
-- **SECRET_KEY**: Cambiar `SECRET_KEY` en `app/auth.py` a un valor seguro
-- **Base de Datos**: Migrar a PostgreSQL/MySQL para producción
-- **CORS**: Configurar orígenes permitidos en producción
-- **HTTPS**: Usar certificados SSL/TLS
-- **Variables de Entorno**: Mover configuraciones sensibles a `.env`
+```bash
+# Listar ramas locales
+git branch
 
-## 📝 Licencia
+# Listar todas las ramas (locales y remotas)
+git branch -a
 
-Este proyecto es un sistema educativo/demo de e-commerce para librerías.
+# Crear nueva rama
+git branch nueva-funcionalidad
+
+# Cambiar a una rama
+git checkout nueva-funcionalidad
+
+# Crear y cambiar a nueva rama
+git checkout -b nueva-funcionalidad
+
+# Cambiar a rama (comando moderno)
+git switch nueva-funcionalidad
+
+# Crear y cambiar a nueva rama (comando moderno)
+git switch -c nueva-funcionalidad
+```
+
+### Fusión de Ramas
+
+```bash
+# Fusionar rama en la rama actual
+git merge nombre-rama
+
+# Fusión con mensaje personalizado
+git merge nombre-rama -m "Mensaje de merge"
+
+# Fusión sin fast-forward
+git merge --no-ff nombre-rama
+
+# Eliminar rama local
+git branch -d nombre-rama
+
+# Eliminar rama forzadamente
+git branch -D nombre-rama
+```
+
+### Rebase
+
+```bash
+# Rebase interactivo
+git rebase -i HEAD~3
+
+# Rebase sobre otra rama
+git rebase development
+
+# Continuar rebase después de resolver conflictos
+git rebase --continue
+
+# Abortar rebase
+git rebase --abort
+```
+
+> **Nota**: Usa rebase para mantener un historial lineal y limpio, pero evítalo en ramas compartidas.
+
+---
+*-*-*-*-*-*-**/*/*/*/*/*/*/
+## GitHub: Comandos Remotos
+### Sincronización con Repositorio Remoto
+
+```bash
+# Subir cambios al repositorio remoto
+git push origin development
+# Subir nueva rama al remoto
+git push -u origin nueva-funcionalidad
+
+# Subir todas las ramas
+git push --all origin
+
+# Subir tags
+git push --tags origin
+
+# Forzar push (usar con precaución)
+git push --force origin development
+```
+
+### Obtener Cambios del Remoto
+
+```bash
+# Obtener cambios sin fusionar
+git fetch origin
+
+# Obtener y fusionar cambios
+git pull origin development
+
+# Pull con rebase
+git pull --rebase origin development
+
+# Establecer rama upstream
+git branch --set-upstream-to=origin/development development
+```
+
+
+---
+
+## Solución de Conflictos
+
+### Identificar y Resolver Conflictos
+
+```bash
+# Ver archivos con conflictos
+git status
+
+# Ver diferencias de conflictos
+git diff
+
+# Resolver conflictos manualmente y confirmar
+git add archivo-resuelto.txt
+git commit -m "Resolver conflicto en archivo-resuelto.txt"
+
+# Usar herramienta de merge
+git mergetool
+```
+
+## Buenas Prácticas y Recomendaciones
+
+### Estructura de Commits
+
+```bash
+# Formato recomendado para mensajes de commit
+git commit -m "tipo: descripción breve
+
+Explicación detallada del cambio (opcional)
+
+Resolves #123"
+
+# Ejemplos de tipos comunes:
+# feat: nueva funcionalidad
+# fix: corrección de bug
+# docs: cambios en documentación
+# style: cambios de formato
+# refactor: refactorización de código
+# test: agregar o modificar tests
+```
+
+### Flujo de Trabajo Recomendado
+
+```bash
+# 1. Actualizar rama principal
+git checkout development
+git pull origin development
+
+# 2. Crear rama para nueva funcionalidad
+git checkout -b feature/descripcion-funcionalidad
+
+# 3. Hacer commits frecuentes y descriptivos
+git add .
+git commit -m "feat: implementar validación de formulario"
+
+# 4. Mantener rama actualizada
+git checkout development
+git pull origin development
+git checkout feature/descripcion-funcionalidad
+git rebase development
+
+# 5. Subir cambios
+git push -u origin feature/descripcion-funcionalidad
+
+# 6. Crear Pull Request en GitHub
+# 7. Después de aprobación, fusionar y limpiar
+git checkout development
+git pull origin development
+git branch -d feature/descripcion-funcionalidad
+```
+
+### Comandos de Limpieza
+
+```bash
+# Limpiar archivos no rastreados
+git clean -n                # Vista previa
+git clean -f                # Ejecutar limpieza
+
+# Limpiar ramas fusionadas
+git branch --merged | grep -v development | xargs -n 1 git branch -d
+
+# Limpiar referencias remotas obsoletas
+git remote prune origin
+```
+
+### Configuración Avanzada
+
+```bash
+# Configurar autopush para branches
+git config --global push.default current
+
+# Configurar rebase por defecto para pull
+git config --global pull.rebase true
+
+# Configurar colores
+git config --global color.ui auto
+
+# Configurar .gitignore global
+git config --global core.excludesfile ~/.gitignore_global
+```
+
+### Herramientas Útiles
+
+```bash
+# Buscar texto en historial
+git log -S "texto-a-buscar"
+
+# Encontrar quién modificó una línea
+git blame archivo.txt
+
+# Buscar commit que introdujo un bug
+git bisect start
+git bisect bad              # Commit con bug
+git bisect good commit-hash # Commit sin bug
+
+# Guardar cambios temporalmente
+git stash
+git stash pop
+git stash list
+git stash apply stash@{0}
